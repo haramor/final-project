@@ -1,0 +1,57 @@
+.experience-container {
+  width: 100%;
+  padding: 1rem;
+}
+
+.experience-content {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.experience-content h2 {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: var(--text-color);
+}
+
+form {
+  position: relative;
+}
+
+.experience-input {
+  width: 100%;
+  min-height: 300px;
+  padding: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 1rem;
+  line-height: 1.5;
+  resize: vertical;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.experience-input:focus {
+  outline: none;
+  border-color: var(--darker-pink);
+  box-shadow: 0 0 0 2px rgba(255,214,224,0.3);
+}
+
+.submit-button {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--darker-pink);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-color);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.submit-button:hover {
+  background-color: #ffbfcc;
+} 

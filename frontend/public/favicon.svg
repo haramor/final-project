@@ -1,0 +1,10 @@
+<svg width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    text {
+      font-family: Arial, sans-serif;
+      font-weight: bold;
+      fill:rgb(213, 43, 128);
+    }
+  </style>
+  <text x="16" y="22" text-anchor="middle" font-size="20">XX</text>
+</svg> 
