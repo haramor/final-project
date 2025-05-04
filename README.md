@@ -117,9 +117,7 @@ Key Features:
 
 ### Planned
 - Advanced filtering for contraceptive methods and side effects
-- User authentication for personalized experiences
-- Collaborative features for sharing experiences
-- Analytics dashboard for usage patterns
+- Fine-tuning model on medical data using LORA or other technique
 
 ## Example Queries
 
