@@ -1,22 +1,21 @@
+import sys
 import os
+
+# Add the project root to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama.llms import OllamaLLM
 from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_core.documents import Document
+from app.database.db import get_db  # Import the database connector
 
-# Load environment variables 
+# Load environment variables
 load_dotenv()
 
 # --- Configuration ---
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 LLM_MODEL_NAME = "llama3"  # Or another model you have downloaded in Ollama
-
-# Initialize once at module level to print first-run debug logs
-print("RAG module loaded, components will initialize on first query.")
 
 # --- Prompt Template ---
 RAG_PROMPT_TEMPLATE = """
@@ -39,11 +38,9 @@ ANSWER:
 # Cache for components so we don't initialize them on every request
 _component_cache = {
     'initialized': False,
-    'embedding_function': None,
-    'vectorstore': None,
-    'llm': None,
     'retriever': None,
-    'rag_chain_with_sources': None
+    'rag_prompt': None,
+    'llm': None
 }
 
 def format_docs(docs):
@@ -52,41 +49,29 @@ def format_docs(docs):
     return context_str
 
 def get_sources(docs):
-    """Helper function to extract unique source names from retrieved documents."""
-    return list(set(doc.metadata.get('source', 'Unknown') for doc in docs))
+    """Helper function to extract unique paper titles from retrieved documents."""
+    sources = list(set(doc.metadata.get('title', 'Unknown') for doc in docs))
+    return sources
 
 def initialize_components():
     """Initialize all RAG components if they haven't been initialized yet."""
     global _component_cache
-    
-    # Skip if already initialized
+
     if _component_cache['initialized']:
         return True
-    
+
     try:
-        # Initialize embedding function
-        embedding_function = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
-        print("[initialize_components] Embedding function initialized.")
-        
-        # Initialize vector store with sample documents
-        vectorstore = InMemoryVectorStore(embedding=embedding_function)
-        documents = [
-            Document(
-                page_content="This is a dummy document about contraception. Women have many options for contraception including hormonal and non-hormonal methods.",
-                metadata={"source": "dummy_source", "title": "Contraception Overview"}
-            ),
-            Document(
-                page_content="IUDs (intrauterine devices) are small, T-shaped devices inserted into the uterus to prevent pregnancy. Common side effects may include cramping, spotting, or irregular periods.",
-                metadata={"source": "dummy_source", "title": "IUD Information"}
-            ),
-            Document(
-                page_content="The hormonal patch releases hormones through the skin and is changed weekly. Potential side effects include skin irritation at the site of application.",
-                metadata={"source": "dummy_source", "title": "Birth Control Patch"}
-            )
-        ]
-        vectorstore.add_documents(documents)
-        print(f"[initialize_components] Vector store initialized with {len(documents)} documents.")
-        
+        # Initialize the database
+        db = get_db()
+
+        # Use the database's retriever
+        retriever = db.collections["research_papers"].as_retriever(search_kwargs={'k': 5})
+        _component_cache['retriever'] = retriever
+
+        # Initialize the RAG prompt
+        rag_prompt = PromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
+        _component_cache['rag_prompt'] = rag_prompt
+
         # Initialize LLM - Try to connect to Ollama
         try:
             llm = OllamaLLM(model=LLM_MODEL_NAME)
@@ -96,13 +81,12 @@ def initialize_components():
             test_response = llm.invoke("Hello there!")
             print(f"[initialize_components] Ollama test successful.")
         except Exception as e:
-            # If Ollama fails, we'll use a mock function for demonstration purposes
+            # If Ollama fails, use a mock LLM function
             print(f"[initialize_components] Warning: Ollama connection failed: {e}")
             print("[initialize_components] Using a mock LLM function for demonstration.")
             
             # Simple function that returns pre-defined responses based on keywords in the question
             def mock_llm_function(text):
-                # Simple keyword-based answering
                 if "iud" in text.lower():
                     return "Based on the information in the context, IUDs (intrauterine devices) are small, T-shaped devices inserted into the uterus to prevent pregnancy. Common side effects may include cramping, spotting, or irregular periods."
                 elif "patch" in text.lower() or "hormonal patch" in text.lower():
@@ -119,56 +103,11 @@ def initialize_components():
                     return mock_llm_function(text)
             
             llm = MockLLM()
-            
-        # Initialize retriever
-        retriever = vectorstore.as_retriever(search_kwargs={'k': 3})
-        print("[initialize_components] Retriever initialized.")
         
-        # Initialize RAG prompt
-        rag_prompt = PromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
-        
-        # Initialize RAG chain
-        # Simplify the chain construction to avoid potential issues
-        def process_query(query_dict):
-            question = query_dict["question"]
-            
-            # Get documents
-            docs = retriever.invoke(question)
-            
-            # Format documents and get sources
-            context = format_docs(docs)
-            sources = get_sources(docs)
-            
-            # Get answer from LLM
-            prompt_input = {"context": context, "question": question}
-            formatted_prompt = rag_prompt.format(**prompt_input)
-            
-            # Check if we should use the invoke method or call directly
-            if hasattr(llm, 'invoke'):
-                answer = llm.invoke(formatted_prompt)
-            else:
-                answer = llm(formatted_prompt)
-            
-            # Return result
-            return {"answer": answer, "sources": sources}
-        
-        # This gives us a simple function that can be used without complex LangChain chaining
-        rag_chain_with_sources = process_query
-        
-        print("[initialize_components] RAG chain initialized.")
-        
-        # Store everything in cache
-        _component_cache.update({
-            'initialized': True,
-            'embedding_function': embedding_function,
-            'vectorstore': vectorstore,
-            'llm': llm,
-            'retriever': retriever,
-            'rag_chain_with_sources': rag_chain_with_sources
-        })
-        
+        _component_cache['llm'] = llm
+        _component_cache['initialized'] = True
+        print("[initialize_components] RAG components initialized successfully.")
         return True
-        
     except Exception as e:
         print(f"[initialize_components] Error initializing components: {e}")
         import traceback
@@ -191,16 +130,32 @@ def query_rag(user_query: str) -> dict:
         if not success:
             return {"answer": "Error initializing RAG components. Cannot process query.", "sources": []}
     
-    # Get the chain from cache
-    rag_chain_with_sources = _component_cache['rag_chain_with_sources']
+    # Get the retriever and prompt
+    retriever = _component_cache['retriever']
+    rag_prompt = _component_cache['rag_prompt']
+    llm = _component_cache['llm']
     
-    # Process the query
-    print(f"[query_rag] Processing query: {user_query}")
+    # Retrieve documents from the database
     try:
-        # Call the function directly instead of using .invoke()
-        result = rag_chain_with_sources({"question": user_query})
-        print(f"[query_rag] Result: {result}")
-        return result
+        docs = retriever.get_relevant_documents(user_query)
+        if not docs:
+            return {"answer": "No relevant documents found in the database.", "sources": []}
+        
+        # Format documents and get sources
+        context = format_docs(docs)
+        sources = get_sources(docs)  # Use the updated get_sources function
+        
+        # Generate the answer using the prompt
+        prompt_input = {"context": context, "question": user_query}
+        formatted_prompt = rag_prompt.format(**prompt_input)
+        
+        # Use the LLM to generate the answer
+        if hasattr(llm, 'invoke'):
+            answer = llm.invoke(formatted_prompt)
+        else:
+            answer = llm(formatted_prompt)
+        
+        return {"answer": answer, "sources": sources}
     except Exception as e:
         print(f"[query_rag] Error during execution: {e}")
         import traceback
@@ -222,4 +177,4 @@ if __name__ == '__main__':
     response_2 = query_rag(test_query_2)
     print(f"Query: {test_query_2}")
     print(f"Answer: {response_2.get('answer')}")
-    print(f"Sources: {response_2.get('sources')}") 
+    print(f"Sources: {response_2.get('sources')}")

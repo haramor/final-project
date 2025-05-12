@@ -5,15 +5,20 @@ This module provides an abstraction over different vector database implementatio
 Sarah should update this file based on the chosen database solution.
 """
 
+import sys
+import os
+
+# Add the project root to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
+import logging
 from typing import List, Dict, Any, Optional, Union
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-import logging
-import os
+import pandas as pd 
+import json
 
 # Import config
 from app.database.config import (
@@ -21,8 +26,6 @@ from app.database.config import (
     CHROMA_PERSIST_DIRECTORY,
     SCHEMA_VERSION
 )
-
-# Import schema
 from app.database.schema import validate_metadata, COLLECTION_SCHEMAS, ArticleMetadata
 
 # Setup logging
@@ -44,14 +47,11 @@ class VectorDatabase:
 
         logger.info(f"Initialized Chroma vector database")
     
-
     def _init_collections(self):
         """Initialize collections based on schema definitions"""
         try:
-            # Ensure the persistence directory exists
             os.makedirs(CHROMA_PERSIST_DIRECTORY, exist_ok=True)
 
-            # Create collections based on schema definitions
             for collection_name, schema_class in COLLECTION_SCHEMAS.items():
                 self.collections[collection_name] = Chroma(
                     persist_directory=CHROMA_PERSIST_DIRECTORY,
@@ -68,12 +68,11 @@ class VectorDatabase:
             logger.error(f"Failed to initialize collections: {str(e)}")
             raise
 
-
     def add_to_collection(self, collection_name: str, documents: Union[Document, List[Document]]):
         """Add documents to a specific collection with schema validation"""
         if collection_name not in self.collections:
             raise ValueError(f"Unknown collection: {collection_name}")
-            
+        
         collection = self.collections[collection_name]
         try:
             if isinstance(documents, Document):
@@ -81,20 +80,18 @@ class VectorDatabase:
             
             validated_documents = []
             for doc in documents:
-                # Validate metadata using schema
-                validated_metadata = validate_metadata(
-                    doc.metadata, 
-                    collection_name
-                )
-                
-                # Create new document with validated metadata
+                # Validate and sanitize metadata
+                validated_metadata = validate_metadata(doc.metadata, collection_name)
+                sanitized_metadata = {
+                    key: (value if isinstance(value, (str, int, float, bool)) else str(value) if value is not None else "N/A")
+                    for key, value in validated_metadata.items()
+                }
                 validated_doc = Document(
                     page_content=doc.page_content,
-                    metadata=validated_metadata
+                    metadata=sanitized_metadata
                 )
                 validated_documents.append(validated_doc)
             
-            # Add validated documents
             texts = [doc.page_content for doc in validated_documents]
             metadatas = [doc.metadata for doc in validated_documents]
             
@@ -106,6 +103,64 @@ class VectorDatabase:
 
         except Exception as e:
             logger.error(f"Failed to add documents to {collection_name}: {str(e)}")
+            raise
+    def preprocess_json_for_rag(self, json_file_path: str):
+        try:
+            # Load JSON data
+            with open(json_file_path, 'r') as file:
+                data = json.load(file)
+            
+            # Extract abstracts and clean text
+            documents = [entry.get('abstract', '').strip() for entry in data if 'abstract' in entry]
+            cleaned_documents = [doc.replace('\n', ' ').replace('\r', '') for doc in documents]
+            
+            # Prepare data for RAG
+            df = pd.DataFrame({'document': cleaned_documents})
+            
+            # Add metadata (if available)
+            df['metadata'] = [
+                {
+                    'title': entry.get('title', ''),
+                    'journal': entry.get('journal', ''),
+                    'year': entry.get('year', ''),
+                    'source': entry.get('title')  # Add source field
+                }
+                for entry in data if 'abstract' in entry
+            ]
+            
+            return df
+        except Exception as e:
+            print(f"An error occurred while processing JSON for RAG: {e}")
+            return None
+
+
+    def preprocess_and_add_json(self, json_file_path: str, collection_name: str):
+        """Preprocess JSON data and add it to the vector database"""
+        try:
+            # Preprocess JSON data
+            df = self.preprocess_json_for_rag(json_file_path)
+            if df is None:
+                raise ValueError("Failed to preprocess JSON data.")
+            
+            # Generate embeddings
+            embeddings = generate_embeddings(df['document'].tolist(), model_name=EMBEDDING_MODEL_NAME)
+            if embeddings is None:
+                raise ValueError("Failed to generate embeddings.")
+            
+            # Create Document objects
+            documents = [
+                Document(
+                    page_content=document,
+                    metadata=metadata
+                )
+                for document, metadata in zip(df['document'], df['metadata'])
+            ]
+            
+            # Add to collection
+            self.add_to_collection(collection_name, documents)
+            logger.info(f"Successfully added preprocessed JSON data to collection: {collection_name}")
+        except Exception as e:
+            logger.error(f"Failed to preprocess and add JSON data: {str(e)}")
             raise
 
     def search_collection(
@@ -119,17 +174,22 @@ class VectorDatabase:
         if collection_name not in self.collections:
             raise ValueError(f"Unknown collection: {collection_name}")
         
-        if metadata_filter:
-            # Just validate that the filter fields exist in the schema
-            valid_fields = COLLECTION_SCHEMAS[collection_name].model_fields.keys()
-            invalid_fields = [f for f in metadata_filter if f not in valid_fields]
+        try:
+            if metadata_filter:
+                valid_fields = COLLECTION_SCHEMAS[collection_name].model_fields.keys()
+                invalid_fields = [f for f in metadata_filter if f not in valid_fields]
+                
+                if invalid_fields:
+                    raise ValueError(f"Invalid filter fields: {invalid_fields}")
+                
+                kwargs['filter'] = metadata_filter
             
-            if invalid_fields:
-                raise ValueError(f"Invalid filter fields: {invalid_fields}")
-            
-            kwargs['filter'] = metadata_filter
-        
-        return self.collections[collection_name].similarity_search(query, **kwargs)
+            results = self.collections[collection_name].similarity_search(query, **kwargs)
+            logger.info(f"Search in collection '{collection_name}' returned {len(results)} results.")
+            return results
+        except Exception as e:
+            logger.error(f"Error during search in collection '{collection_name}': {str(e)}")
+            raise
 
     def search_all(self, query: str, **kwargs):
         """Search across all collections"""
@@ -138,6 +198,29 @@ class VectorDatabase:
             collection_results = collection.similarity_search(query, **kwargs)
             results.extend(collection_results)
         return results
+
+    def get_sources(docs):
+        """Helper function to extract unique source titles from retrieved documents."""
+        return list(set(doc.metadata.get('title', 'Unknown Title') for doc in docs))
+
+def generate_embeddings(documents: List[str], model_name: str) -> List[List[float]]:
+    """
+    Generate embeddings for a list of documents using the HuggingFaceEmbeddings model.
+
+    Args:
+        documents: A list of text documents to embed.
+        model_name: The name of the embedding model.
+
+    Returns:
+        A list of embeddings, where each embedding is a list of floats.
+    """
+    try:
+        embedding_model = HuggingFaceEmbeddings(model_name=model_name)
+        embeddings = embedding_model.embed_documents(documents)
+        return embeddings
+    except Exception as e:
+        logger.error(f"Failed to generate embeddings: {str(e)}")
+        raise
 
 # Singleton instance for the connector
 _db_instance = None
@@ -156,26 +239,15 @@ def get_db() -> VectorDatabase:
         
     return _db_instance
 
-
 # Example usage:
 if __name__ == "__main__":
     db = get_db()
     
-    # Example article document using ArticleMetadata schema
-    research_paper = Document(
-        page_content="IUDs are a form of long-acting reversible contraception.",
-        metadata={
-            "doc_type": "article",
-            "title": "Overview of Long-Acting Reversible Contraception",
-            "url": "https://example.com/article",
-            "journal": "American Journal of Obstetrics and Gynecology",
-            "year": "2023",  # Schema will validate this
-            "doi": "10.1234/ajog.2023.123"
-        }
+    # Preprocess and add JSON data to the database
+    db.preprocess_and_add_json(
+        "/Users/jankahamori/Documents/final-project/backend/app/database/good_pubmed_contraception_abstracts2.json",
+        "research_papers"
     )
-    
-    # Add document - metadata will be validated against ArticleMetadata schema
-    db.add_to_collection("research_papers", research_paper)
     
     # Search with metadata filter
     results = db.search_collection(
@@ -183,4 +255,4 @@ if __name__ == "__main__":
         "What are IUDs?",
         metadata_filter={"journal": "American Journal of Obstetrics and Gynecology"}
     )
-    print(f"Search results: {results}") 
+    print(f"Search results: {results}")
