@@ -7,3 +7,4 @@ __pycache__/
 *.pyz
 .env
 env/
+data/chroma_db/chroma.sqlite3data/chroma_db/chroma.sqlite3
