@@ -38,3 +38,4 @@ langchain-ollama
 langchain-chroma
 langchain-huggingface
 sentence-transformers==2.7.0
+pandas

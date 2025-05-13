@@ -92,18 +92,27 @@ class VectorDatabase:
                 )
                 validated_documents.append(validated_doc)
             
-            texts = [doc.page_content for doc in validated_documents]
-            metadatas = [doc.metadata for doc in validated_documents]
+            # Batch processing
+            batch_size = 1000  # Define a batch size
+            total_added = 0
+            for i in range(0, len(validated_documents), batch_size):
+                batch = validated_documents[i:i + batch_size]
+                texts = [doc.page_content for doc in batch]
+                metadatas = [doc.metadata for doc in batch]
+                
+                collection.add_texts(
+                    texts=texts,
+                    metadatas=metadatas
+                )
+                total_added += len(texts)
+                logger.info(f"Added batch {i // batch_size + 1} to {collection_name} ({len(texts)} documents)")
             
-            collection.add_texts(
-                texts=texts,
-                metadatas=metadatas
-            )
-            logger.info(f"Successfully added {len(texts)} documents to {collection_name}")
+            logger.info(f"Successfully added {total_added} documents in total to {collection_name}")
 
         except Exception as e:
             logger.error(f"Failed to add documents to {collection_name}: {str(e)}")
             raise
+
     def preprocess_json_for_rag(self, json_file_path: str):
         try:
             # Load JSON data
@@ -244,15 +253,46 @@ if __name__ == "__main__":
     db = get_db()
     
     # Preprocess and add JSON data to the database
-    db.preprocess_and_add_json(
-        "/Users/jankahamori/Documents/final-project/backend/app/database/good_pubmed_contraception_abstracts2.json",
-        "research_papers"
-    )
-    
-    # Search with metadata filter
-    results = db.search_collection(
+    # Ensure this part is not commented out if you need to reload data
+    # print("Starting data preprocessing and loading...")
+    # db.preprocess_and_add_json(
+    #     "../../../pubmed_contraception_abstracts2.json",  # Adjusted path
+    #     "research_papers"
+    # )
+    # print("Data preprocessing and loading finished.")
+
+    print("\n=== Test Search 1: WITHOUT metadata filter ===")
+    test_query_1 = "What are IUDs?"
+    results_1 = db.search_collection(
         "research_papers",
-        "What are IUDs?",
-        metadata_filter={"journal": "American Journal of Obstetrics and Gynecology"}
+        test_query_1
     )
-    print(f"Search results: {results}")
+    print(f"Query: '{test_query_1}'")
+    print(f"Search results found (without filter): {len(results_1)}")
+    if results_1:
+        print(f"First result (without filter): {results_1[0].page_content[:200]}... Metadata: {results_1[0].metadata}")
+    else:
+        print("No results found for the test query without filter.")
+
+    print("\n=== Test Search 2: WITH metadata filter ===")
+    test_query_2 = "What are IUDs?"
+    journal_filter = {"journal": "American Journal of Obstetrics and Gynecology"}
+    results_2 = db.search_collection(
+        "research_papers",
+        test_query_2,
+        metadata_filter=journal_filter
+    )
+    print(f"Query: '{test_query_2}' with filter: {journal_filter}")
+    print(f"Search results found (with filter): {len(results_2)}")
+    if results_2:
+        print(f"First result (with filter): {results_2[0].page_content[:200]}... Metadata: {results_2[0].metadata}")
+    else:
+        print("No results found for the test query with the specified journal filter.")
+
+    # Optional: Check total documents in collection if possible (Chroma specific)
+    try:
+        collection = db.collections.get("research_papers")
+        if collection:
+            print(f"\nTotal documents in 'research_papers' collection: {collection.count()}")
+    except Exception as e:
+        print(f"Could not get collection count: {e}")

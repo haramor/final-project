@@ -125,6 +125,7 @@ def query_rag(user_query: str) -> dict:
     Returns:
         A dictionary containing the 'answer' and 'sources'.
     """
+    print(f"[query_rag] Received user_query: '{user_query}'")
     # Initialize components if needed
     if not _component_cache['initialized']:
         success = initialize_components()
