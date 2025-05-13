@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5173';
 
 export const searchArticles = async (query) => {
   try {
@@ -45,6 +45,8 @@ export const getDropdowns = async () => {
 export const callRagApi = async (queryText) => {
   try {
     console.log("Calling RAG API with query:", queryText);
+    console.log("API URL:", API_URL);
+    console.log("Calling endpoint:", `${API_URL}/api/rag_query`);
     const response = await fetch(`${API_URL}/api/rag_query`, {
       method: 'POST',
       headers: {
@@ -69,4 +71,4 @@ export const callRagApi = async (queryText) => {
     console.error('Error calling RAG API:', error);
     throw error;
   }
-}; 
+};

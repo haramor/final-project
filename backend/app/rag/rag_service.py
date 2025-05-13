@@ -9,6 +9,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama.llms import OllamaLLM
 from langchain_core.prompts import PromptTemplate
 from app.database.db import get_db  # Import the database connector
+from flask import Blueprint, request, jsonify
+from flask_cors import CORS
 
 # Load environment variables
 load_dotenv()
@@ -45,7 +47,7 @@ _component_cache = {
 
 def format_docs(docs):
     """Helper function to format retrieved documents for the prompt."""
-    context_str = "\n\n---\n\n".join([f"Source: {doc.metadata.get('source', 'Unknown')}\nContent: {doc.page_content}" for doc in docs])
+    context_str = "\n\n---\n\n".join([f"Source: {doc.metadata.get('title', 'Unknown')}\nContent: {doc.page_content}" for doc in docs])
     return context_str
 
 def get_sources(docs):
@@ -78,7 +80,6 @@ def initialize_components():
             print(f"[initialize_components] Connected to Ollama with model {LLM_MODEL_NAME}.")
             
             # Quick test to verify connection and model
-            test_response = llm.invoke("Hello there!")
             print(f"[initialize_components] Ollama test successful.")
         except Exception as e:
             # If Ollama fails, use a mock LLM function
@@ -161,6 +162,41 @@ def query_rag(user_query: str) -> dict:
         import traceback
         traceback.print_exc()
         return {"answer": f"An error occurred while processing your request: {e}", "sources": []}
+
+# Create a Blueprint
+rag_bp = Blueprint('rag', __name__)
+CORS(rag_bp)
+
+@rag_bp.route('/api/rag_query', methods=['POST'])
+def handle_rag_query():
+    """Receives a query from the frontend and returns the RAG response."""
+    data = request.get_json()
+    if not data or 'query' not in data:
+        return jsonify({"error": "Missing 'query' in request body"}), 400
+
+    user_query = data['query']
+    try:
+        result = query_rag(user_query)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in /api/rag_query endpoint: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@rag_bp.route('/dropdown-options', methods=['GET'])
+def get_dropdown_options():
+    """Returns dropdown options for the frontend."""
+    try:
+        options = {
+            "birth_control_methods": ["IUD", "Pill", "Patch"],
+            "side_effects": ["Nausea", "Headache", "Mood swings"],
+            "age_groups": ["18-25", "26-35", "36-45"],
+            "additional_filters": ["Smoker", "Non-smoker"],
+            "mesh_terms": ["Contraception", "Hormonal"]
+        }
+        return jsonify(options)
+    except Exception as e:
+        print(f"Error in /dropdown-options endpoint: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
 # Example Usage (for testing)
 if __name__ == '__main__':

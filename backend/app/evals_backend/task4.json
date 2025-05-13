@@ -1,0 +1,42 @@
+[
+{
+    "question": "How effective is the birth control pill when used perfectly vs. typically?",
+    "answer": "Perfect use: ~99% effective; typical use: ~91% due to missed doses or inconsistent timing."
+  },
+  {
+    "question": "What are the most common side effects of the hormonal IUD?",
+    "answer": "Cramping, irregular bleeding, and hormonal side effects like mood changes or acne, especially in the first few months."
+  },
+  {
+    "question": "Is it true that birth control pills reduce the risk of ovarian cancer?",
+    "answer": "Yes, long-term use of birth control pills has been associated with a reduced risk of ovarian cancer."
+  },
+  {
+    "question": "Can people with diabetes use hormonal contraception safely?",
+    "answer": "Yes, but those with vascular complications may need non-estrogen options. A medical evaluation is important."
+  },
+  {
+    "question": "Are there differences in weight gain risk between different types of birth control?",
+    "answer": "Yes, some progestin-only methods (like the shot) are more commonly associated with weight gain than others."
+  },
+  {
+    "question": "Does using an IUD increase the risk of pelvic inflammatory disease?",
+    "answer": "Slightly, but only during the first few weeks after insertion, especially if an existing STI is present."
+  },
+  {
+    "question": "Is there a non-hormonal birth control method that is over 99% effective?",
+    "answer": "Yes, the copper IUD is over 99% effective and does not use hormones."
+  },
+  {
+    "question": "Can birth control be used to manage symptoms of polycystic ovary syndrome (PCOS)?",
+    "answer": "Yes, hormonal birth control can help regulate cycles, reduce androgen levels, and manage acne in PCOS."
+  },
+  {
+    "question": "Does birth control cause long-term fertility issues after stopping?",
+    "answer": "No, fertility typically returns quickly after stopping most contraceptives."
+  },
+  {
+    "question": "Is it safe to start birth control without waiting for your period to begin?",
+    "answer": "Yes, with proper guidance ('quick start' method), but backup contraception may be needed for the first 7 days."
+  }
+]
