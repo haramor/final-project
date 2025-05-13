@@ -21,11 +21,11 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 # Configuration
-MODEL_NAME = "mistralai/Mistral-7B-v0.1"  # We'll use Mistral-7B as our base model
-DATASET_PATH = "pubmed_contraception_abstracts2.json"  # Adjusted for Colab: place data in the same dir or provide full path
+MODEL_NAME = "mistralai/Mistral-7B-v0.1"  # Mistral-7B as= base model
+DATASET_PATH = "pubmed_contraception_abstracts2.json"  
 OUTPUT_DIR = "./results"
-MAX_LENGTH = 512
-BATCH_SIZE = 4  # Adjusted for GPU (e.g., T4 on Colab). May need tuning.
+MAX_LENGTH = 265 #decreased for memory
+BATCH_SIZE = 4  
 LEARNING_RATE = 2e-4
 NUM_EPOCHS = 3
 EVAL_STEPS = 100  # Evaluate every 100 steps
@@ -35,16 +35,12 @@ def load_and_process_data(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
-    # Print the structure of the first item to debug
     print("First item structure:", json.dumps(data[0], indent=2))
     
-    # Convert to the format expected by the model
     processed_data = []
     for item in data:
-        # Extract the abstract text - adjust the key based on actual JSON structure
-        abstract_text = item.get('abstract', '')  # Try 'abstract' first
+        abstract_text = item.get('abstract', '')  
         if not abstract_text:
-            # Try alternative keys that might contain the abstract
             for key in ['Abstract', 'abstractText', 'text', 'content']:
                 if key in item:
                     abstract_text = item[key]
@@ -79,12 +75,10 @@ def prepare_model_and_tokenizer():
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         quantization_config=quantization_config, # Apply 4-bit config
-        torch_dtype=torch.float16,  # Still specify compute dtype if not using bnb_4bit_compute_dtype
+        torch_dtype=torch.bfloat16,  # bfloat16 for compute
         device_map="auto"           # Automatically maps model to available GPU
     )
 
-    # Ensure model uses gradient checkpointing after loading and quantization
-    # Note: prepare_model_for_kbit_training can also enable this, but we'll also set it in TrainingArgs
     model.gradient_checkpointing_enable()
 
     # Prepare model for k-bit training IS necessary when using bitsandbytes quantization
@@ -126,7 +120,6 @@ def compute_metrics(eval_preds):
     }
 
 def main():
-    # Load and process data
     # Load and process data
     print("Loading and processing data...")
     train_dataset, val_dataset = load_and_process_data(DATASET_PATH)
