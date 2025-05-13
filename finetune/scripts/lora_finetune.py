@@ -138,6 +138,9 @@ def main():
     parser.add_argument("--test_size", type=float, default=0.1, help="Proportion of dataset to use for testing")
     parser.add_argument("--min_test_size", type=int, default=1, help="Minimum number of examples in test set")
     parser.add_argument("--hf_token", type=str, default=None, help="Hugging Face API token for accessing gated models")
+    parser.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"], help="Device to use for training (cpu or cuda)")
+    parser.add_argument("--fp16", action="store_true", help="Use fp16 precision for training")
+    parser.add_argument("--gradient_checkpointing", action="store_true", help="Enable gradient checkpointing to save memory")
     args = parser.parse_args()
     
     # Set random seed
@@ -182,17 +185,22 @@ def main():
     )
     
     # Check if CUDA is available
-    cuda_available = torch.cuda.is_available()
+    cuda_available = torch.cuda.is_available() and args.device == "cuda"
     
     # If CUDA is not available, disable quantization
     if not cuda_available and (args.use_4bit or args.use_8bit):
-        print("CUDA is not available. Quantization (4-bit/8-bit) will be disabled.")
+        print("CUDA is not available or not selected. Quantization (4-bit/8-bit) will be disabled.")
         args.use_4bit = False
         args.use_8bit = False
     
     # Set device to CPU if CUDA is not available
     device = torch.device("cuda" if cuda_available else "cpu")
     print(f"Using device: {device}")
+    
+    if cuda_available:
+        # Print GPU information if using CUDA
+        print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
     
     # Load the model
     model_kwargs = {}
@@ -228,6 +236,11 @@ def main():
             **model_kwargs
         )
     
+    # Enable gradient checkpointing if specified
+    if args.gradient_checkpointing and cuda_available:
+        model.gradient_checkpointing_enable()
+        print("Gradient checkpointing enabled")
+    
     # Prepare the model for kbit training if using quantization
     if args.use_4bit or args.use_8bit:
         model = prepare_model_for_kbit_training(model)
@@ -254,10 +267,12 @@ def main():
             trainable_params += param.numel()
     print(f"Trainable params: {trainable_params} ({100 * trainable_params / all_params:.2f}% of all params)")
     
-    # Determine whether to use fp16 based on CUDA availability
-    use_fp16 = cuda_available
-    if not use_fp16:
+    # Determine whether to use fp16 based on CUDA availability and args
+    use_fp16 = cuda_available and args.fp16
+    if not cuda_available and args.fp16:
         print("CUDA is not available. fp16 precision will be disabled.")
+    elif args.fp16:
+        print("Using fp16 precision for training.")
     
     # Define training arguments
     training_args = TrainingArguments(
@@ -279,6 +294,7 @@ def main():
         seed=args.seed,
         load_best_model_at_end=True,
         report_to="tensorboard",
+        gradient_checkpointing=args.gradient_checkpointing and cuda_available,
     )
     
     # Define the Trainer

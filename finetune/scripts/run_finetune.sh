@@ -11,4 +11,6 @@ python lora_finetune.py \
     --batch_size 4 \
     --gradient_accumulation_steps 4 \
     --num_epochs 3 \
-    --use_8bit 
+    --device cuda \
+    --fp16 \
+    --gradient_checkpointing 
