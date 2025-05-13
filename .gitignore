@@ -8,3 +8,4 @@ __pycache__/
 .env
 env/
 data/chroma_db/chroma.sqlite3data/chroma_db/chroma.sqlite3
+data/chroma_db/chroma.sqlite3
