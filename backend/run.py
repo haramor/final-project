@@ -1,14 +1,8 @@
-from flask import Flask
-from app.rag.rag_service import rag_bp  # Import the Blueprint
+from app import create_app # Import create_app from the app package (app/__init__.py)
 
-def create_app():
-    app = Flask(__name__)
-
-    # Register the Blueprint
-    app.register_blueprint(rag_bp, url_prefix='/rag')
-
-    return app
+app = create_app() # Create the app instance using the centralized function
 
 if __name__ == '__main__':
-    app = create_app()
-    app.run(debug=True, port=5173, host='0.0.0.0')
+    # Use a different port if 5173 is for the frontend, e.g., 5001 or Flask's default 5000
+    # The previous run.py used 5001. Let's stick to that for consistency with earlier debugging.
+    app.run(debug=True, port=5001, host='0.0.0.0')

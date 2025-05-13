@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5173';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export const searchArticles = async (query) => {
   try {
@@ -42,17 +42,23 @@ export const getDropdowns = async () => {
   }
 }; 
 
-export const callRagApi = async (queryText) => {
+export const callRagApi = async (queryText, filters = {}) => {
   try {
-    console.log("Calling RAG API with query:", queryText);
-    console.log("API URL:", API_URL);
-    console.log("Calling endpoint:", `${API_URL}/api/rag_query`);
+    console.log("Calling RAG API with query:", queryText, "and filters:", filters);
+    const payload = {
+      query: queryText,
+      current_birth_control: filters.birth_control || 'Not specified',
+      current_side_effects: filters.side_effects || 'Not specified',
+      current_age_group: filters.age_group || 'Not specified',
+      primary_reason: filters.primary_reason || 'Not specified'
+    };
+
     const response = await fetch(`${API_URL}/api/rag_query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query: queryText })
+      body: JSON.stringify(payload)
     });
     
     if (!response.ok) {

@@ -9,8 +9,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama.llms import OllamaLLM
 from langchain_core.prompts import PromptTemplate
 from app.database.db import get_db  # Import the database connector
-from flask import Blueprint, request, jsonify
-from flask_cors import CORS
 
 # Load environment variables
 load_dotenv()
@@ -21,20 +19,32 @@ LLM_MODEL_NAME = "llama3"  # Or another model you have downloaded in Ollama
 
 # --- Prompt Template ---
 RAG_PROMPT_TEMPLATE = """
-CONTEXT:
+USER PROFILE:
+Currently Taking: {current_birth_control}
+Experiencing Side Effects: {current_side_effects}
+Age Group: {current_age_group}
+Primary Reason for Contraception: {primary_reason}
+
+CONTEXT (Research paper excerpts. Each excerpt is prefixed with its source title, e.g., "Source: [Paper Title]"):
 {context}
 
-QUESTION:
+USER'S QUESTION:
 {question}
 
-INSTRUCTIONS:
-You are an AI assistant specialized in women's health and contraception. Your purpose is to provide accurate, evidence-based information based *only* on the provided CONTEXT.
-Answer the user's QUESTION using *only* the information found in the CONTEXT above.
-If the CONTEXT does not contain the answer, state clearly that the information is not available in the provided sources.
-Do not add any information that is not explicitly mentioned in the CONTEXT.
-After providing the answer, list the sources used. The source for each piece of context is included in its metadata (e.g., 'source': 'document_name.pdf'). List the unique source names.
+YOUR ROLE:
+You are "XX", a friendly, encouraging, and knowledgeable women's health information guide. Your purpose is to provide clear and relevant information from the CONTEXT to help the user feel more informed and empowered as they consider their contraceptive options and prepare for discussions with their healthcare provider. Your response should be a single, flowing, conversational narrative.
 
-ANSWER:
+INSTRUCTIONS (Follow these to construct your response):
+-   **Start with Encouragement**: Begin by acknowledging the user's question and offering support in exploring the information.
+-   **Answer Directly & Clearly**: Directly address the USER'S QUESTION by synthesizing relevant findings from the CONTEXT. Focus on presenting what the research says about the topic in an easy-to-understand way.
+-   **Cite Sources Naturally for Trust**: When you present specific information or findings from the CONTEXT, naturally include the source document's title to build trust and show where the information comes from. For example: "...the paper 'Understanding Contraceptive Choices' notes that..." or "...as found in the study titled 'Side Effect Profiles of IUDs', ...".
+-   **Connect to User's Situation Thoughtfully**: Where appropriate, gently connect the general findings to the USER PROFILE. If the information seems particularly relevant (or not directly applicable) to their specifics (current method, side effects, age, primary reason), you can note this. For example: "Since you mentioned {primary_reason} as your main goal, the information about [method's effectiveness/non-contraceptive benefits] from 'Contraceptive Benefits Review' might be particularly interesting." or "While the studies in the context don't specifically address {current_birth_control} in combination with {current_side_effects}, they do offer general insights about hormonal impacts that could be a starting point for your thinking."
+-   **Acknowledge Information Gaps Supportively**: If the CONTEXT doesn't provide the exact detail the user might be looking for (e.g., specific statistics for their precise profile), state this in a supportive way, emphasizing what *is* available. Example: "The provided research gives a good overview of [topic], but doesn't break down the numbers for your specific age group and current method. However, the general trends observed were..."
+-   **Empower for Doctor Discussion**: Conclude by helping the user identify 1-2 key takeaways or questions *they* might want to bring to their healthcare provider. Frame these as tools for their conversation.
+    *   Example: "Based on this, when you talk to your doctor, you might find it helpful to discuss: 1. How the typical experiences with [method/side effect discussed], as highlighted in 'Patient Experiences Study', might compare with your own priorities. 2. What options could best align with your goal of {primary_reason} while considering your experience with {current_side_effects}."
+-   **Maintain Overall Tone**: Throughout, ensure your response is encouraging, clear, empathetic, and empowering. Avoid overly technical language unless explained, and focus on providing useful information.
+
+YOUR RESPONSE (Provide your synthesized answer and follow-up as a single, flowing narrative. Do not use explicit section titles. Do not re-print the multi-page CONTEXT block or the USER'S QUESTION verbatim.):
 """
 
 # Cache for components so we don't initialize them on every request
@@ -115,17 +125,27 @@ def initialize_components():
         traceback.print_exc()
         return False
 
-def query_rag(user_query: str) -> dict:
+def query_rag(user_query: str, 
+              current_birth_control: str = "Not specified", 
+              current_side_effects: str = "Not specified", 
+              current_age_group: str = "Not specified",
+              primary_reason: str = "Not specified") -> dict:
     """
-    Queries the RAG chain with the user's question.
+    Queries the RAG chain with the user's question and profile.
     
     Args:
         user_query: The question asked by the user.
+        current_birth_control: User's current birth control.
+        current_side_effects: User's current side effects.
+        current_age_group: User's age group.
+        primary_reason: User's primary reason for contraception.
         
     Returns:
         A dictionary containing the 'answer' and 'sources'.
     """
     print(f"[query_rag] Received user_query: '{user_query}'")
+    print(f"[query_rag] Profile - Birth Control: '{current_birth_control}', Side Effects: '{current_side_effects}', Age Group: '{current_age_group}', Primary Reason: '{primary_reason}'")
+
     # Initialize components if needed
     if not _component_cache['initialized']:
         success = initialize_components()
@@ -141,14 +161,21 @@ def query_rag(user_query: str) -> dict:
     try:
         docs = retriever.get_relevant_documents(user_query)
         if not docs:
-            return {"answer": "No relevant documents found in the database.", "sources": []}
+            return {"answer": "No relevant documents found in the database for your query. Please try rephrasing or asking a different question.", "sources": []}
         
         # Format documents and get sources
         context = format_docs(docs)
         sources = get_sources(docs)  # Use the updated get_sources function
         
         # Generate the answer using the prompt
-        prompt_input = {"context": context, "question": user_query}
+        prompt_input = {
+            "context": context, 
+            "question": user_query,
+            "current_birth_control": current_birth_control or "Not specified",
+            "current_side_effects": current_side_effects or "Not specified",
+            "current_age_group": current_age_group or "Not specified",
+            "primary_reason": primary_reason or "Not specified"
+        }
         formatted_prompt = rag_prompt.format(**prompt_input)
         
         # Use the LLM to generate the answer
@@ -163,41 +190,6 @@ def query_rag(user_query: str) -> dict:
         import traceback
         traceback.print_exc()
         return {"answer": f"An error occurred while processing your request: {e}", "sources": []}
-
-# Create a Blueprint
-rag_bp = Blueprint('rag', __name__)
-CORS(rag_bp)
-
-@rag_bp.route('/api/rag_query', methods=['POST'])
-def handle_rag_query():
-    """Receives a query from the frontend and returns the RAG response."""
-    data = request.get_json()
-    if not data or 'query' not in data:
-        return jsonify({"error": "Missing 'query' in request body"}), 400
-
-    user_query = data['query']
-    try:
-        result = query_rag(user_query)
-        return jsonify(result)
-    except Exception as e:
-        print(f"Error in /api/rag_query endpoint: {e}")
-        return jsonify({"error": "An internal server error occurred"}), 500
-
-@rag_bp.route('/dropdown-options', methods=['GET'])
-def get_dropdown_options():
-    """Returns dropdown options for the frontend."""
-    try:
-        options = {
-            "birth_control_methods": ["IUD", "Pill", "Patch"],
-            "side_effects": ["Nausea", "Headache", "Mood swings"],
-            "age_groups": ["18-25", "26-35", "36-45"],
-            "additional_filters": ["Smoker", "Non-smoker"],
-            "mesh_terms": ["Contraception", "Hormonal"]
-        }
-        return jsonify(options)
-    except Exception as e:
-        print(f"Error in /dropdown-options endpoint: {e}")
-        return jsonify({"error": "An internal server error occurred"}), 500
 
 # Example Usage (for testing)
 if __name__ == '__main__':

@@ -9,6 +9,7 @@ function SearchForm() {
     birth_control_methods: [],
     side_effects: [],
     age_groups: [],
+    primary_reason: [],
     additional_filters: [],
     mesh_terms: []
   });
@@ -17,6 +18,7 @@ function SearchForm() {
     birth_control: [],
     side_effects: [],
     age_group: [],
+    primary_reason: [],
     additional: [],
     mesh_terms: []
   });
@@ -33,11 +35,19 @@ function SearchForm() {
     const fetchOptions = async () => {
       try {
         const response = await getDropdowns();
-        console.log(response);
-        setOptions(response);
+        console.log("Response from /dropdown-options API:", response);
+        
+        setOptions(prevOptions => ({
+          ...prevOptions, 
+          ...response,    
+          birth_control_methods: response.birth_control_methods || [],
+          side_effects: response.side_effects || [],
+          age_groups: response.age_groups || [],
+          primary_reason: response.primary_reason || [] 
+        }));
       } catch (err) {
         setError('Failed to load dropdown options');
-        console.error(err);
+        console.error("Error in fetchOptions trying to get dropdowns:", err);
       }
     };
     
@@ -55,8 +65,17 @@ function SearchForm() {
     setRagSources([]);
     setHasSearched(true);
     
+    // Prepare filters for the API call
+    const apiFilters = {
+      birth_control: selectedFilters.birth_control.length > 0 ? selectedFilters.birth_control.join(', ') : 'Not specified',
+      side_effects: selectedFilters.side_effects.length > 0 ? selectedFilters.side_effects.join(', ') : 'Not specified',
+      age_group: selectedFilters.age_group.length > 0 ? selectedFilters.age_group.join(', ') : 'Not specified',
+      primary_reason: selectedFilters.primary_reason.length > 0 ? selectedFilters.primary_reason.join(', ') : 'Not specified'
+    };
+
     try {
-      const response = await callRagApi(naturalLanguageQuery);
+      // Pass the natural language query and the prepared filters
+      const response = await callRagApi(naturalLanguageQuery, apiFilters);
       console.log("RAG API response:", response);
       
       setRagAnswer(response.answer || "No answer received.");
@@ -94,7 +113,7 @@ function SearchForm() {
           <Select
             isMulti
             name="birth_control"
-            options={options.birth_control_methods.map(method => ({ label: method, value: method }))}
+            options={(options.birth_control_methods || []).map(method => ({ label: method, value: method }))}
             onChange={handleFilterChange}
             placeholder="Birth Control Methods"
             className="select-filter"
@@ -104,7 +123,7 @@ function SearchForm() {
           <Select
             isMulti
             name="side_effects"
-            options={options.side_effects.map(effect => ({ label: effect, value: effect }))}
+            options={(options.side_effects || []).map(effect => ({ label: effect, value: effect }))}
             onChange={handleFilterChange}
             placeholder="Side Effects"
             className="select-filter"
@@ -113,10 +132,20 @@ function SearchForm() {
           <p>What age group are you in?</p>
           <Select
             isMulti
-            name="age_groups"
-            options={options.age_groups.map(age => ({ label: age, value: age }))}
+            name="age_group"
+            options={(options.age_groups || []).map(age => ({ label: age, value: age }))}
             onChange={handleFilterChange}
             placeholder="Age Groups"
+            className="select-filter"
+            classNamePrefix="select"
+          />
+          <p>What is your primary reason for contraception?</p>
+          <Select
+            isMulti
+            name="primary_reason"
+            options={(options.primary_reason || []).map(reason => ({ label: reason, value: reason }))}
+            onChange={handleFilterChange}
+            placeholder="Primary Reason"
             className="select-filter"
             classNamePrefix="select"
           />
